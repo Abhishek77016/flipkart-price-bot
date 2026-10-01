@@ -4,7 +4,7 @@ import time
 from bs4 import BeautifulSoup
 
 TELEGRAM_TOKEN = "8880334697:AAEXs3tCa1hw3C0QS7nyCU7hhn-Srpr9WWU"
-CHAT_ID = "8668506846"
+CHAT_ID = "-5496951936"
 
 PRODUCTS = [
     {
