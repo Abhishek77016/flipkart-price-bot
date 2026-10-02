@@ -8,7 +8,8 @@ TELEGRAM_TOKEN = "8880334697:AAEXs3tCa1hw3C0QS7nyCU7hhn-Srpr9WWU"
 CHAT_ID = "-5496951936"
 
 # 💰 अपना GPLinks का API Token यहाँ डालें (GPLinks.com पर अकाउंट बनाने के बाद Tools -> Quick Link या API सेक्शन में मिलेगा)
-GPLINKS_API_TOKEN = 690a36f7219a058fd824ecdd5317378edc27e122
+GPLINKS_API_TOKEN = os.getenv ("690a36f7219a058fd824ecdd5317378edc27e122")
+import os
 
 PRODUCTS = [
     {
