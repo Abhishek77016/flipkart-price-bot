@@ -5,8 +5,8 @@ import schedule
 from bs4 import BeautifulSoup
 
 # Railway Environment Variables से डेटा उठाएगा
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+TELEGRAM_TOKEN = os.getenv("690a36f7219a058fd824ecdd5317378edc27e122")
+CHAT_ID = os.getenv("8668506846")
 GPLINKS_API_TOKEN = os.getenv("GPLINKS_API_TOKEN", "YOUR_GPLINKS_API_TOKEN_HERE")
 
 PRODUCTS = [
