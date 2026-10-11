@@ -142,7 +142,7 @@ def check():
 
 check()
 schedule.every(60).minutes.do(check)
-print("🚀 ट्रैकर चालू है, हर 55 मिनट में चेक करेगा...")
+print("🚀 ट्रैकर चालू है, हर 420 मिनट में चेक करेगा...")
 while True:
     schedule.run_pending()
     time.sleep(30)
