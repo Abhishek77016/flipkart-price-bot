@@ -1,81 +1,148 @@
-import os
-import time
-import requests
-import schedule
+import re, json, time, html
+import requests, schedule
 from bs4 import BeautifulSoup
 
-# Railway Environment Variables से डेटा उठाएगा
-TELEGRAM_TOKEN = os.getenv("690a36f7219a058fd824ecdd5317378edc27e122")
-CHAT_ID = os.getenv("8668506846")
-GPLINKS_API_TOKEN = os.getenv("GPLINKS_API_TOKEN", "YOUR_GPLINKS_API_TOKEN_HERE")
+TOKEN = "8880334697:AAEXs3tCa1hw3C0QS7nyCU7hhn-Srpr9WWU"
+CHAT_ID = "8668506846"
 
-PRODUCTS = [
-    {
-        "name": "Apple iPhone 15 (Black, 128 GB)",
-        "url": "https://www.flipkart.com/apple-iphone-15-black-128-gb/p/itm6ac2b7f9d0b41"
-    }
-]
+MIN_P, MAX_P = 30000, 40000
+PAGES = 3
+MAX_PER_RUN = 15
+DB_FILE = "prices.json"
 
-def shorten_with_gplinks(long_url):
-    if GPLINKS_API_TOKEN == "YOUR_GPLINKS_API_TOKEN_HERE":
-        return long_url
-    
-    api_url = f"https://gplinks.in/api?api={GPLINKS_API_TOKEN}&url={long_url}"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 Chrome/120 Safari/537.36",
+    "Accept-Language": "en-IN,en;q=0.9",
+}
+SEARCH = ("https://www.flipkart.com/search?q=mobile+phones"
+          f"&p%5B%5D=facets.price_range.from%3D{MIN_P}"
+          f"&p%5B%5D=facets.price_range.to%3D{MAX_P}&page={{}}")
+
+SKIP = ("add to compare", "coming soon", "sponsored", "assured",
+        "bestseller", "off", "free delivery", "bank offer")
+
+
+def load_db():
     try:
-        response = requests.get(api_url, timeout=10).json()
-        if response.get("status") == "success":
-            return response.get("shortenedUrl")
-    except Exception as e:
-        print("❌ URL Shorten karne me error aaya:", e)
-    return long_url
+        with open(DB_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
-def check_and_send_all_deals():
-    print("\n[Multi-Tracker] Sabhi products ka price check kiya ja raha hai...")
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9'
-    }
 
-    for item in PRODUCTS:
-        url = item["url"]
-        backup_name = item["name"]
+def save_db(db):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, ensure_ascii=False)
 
+
+def nums(text):
+    return [int(x.replace(",", "")) for x in re.findall(r"₹\s?([\d,]{4,8})", text)]
+
+
+def get_name(a, text):
+    if a.get("title"):
+        return a["title"]
+    img = a.find("img")
+    if img and img.get("alt"):
+        return img["alt"]
+    for l in text.split("\n"):
+        low = l.lower()
+        if len(l) > 10 and "₹" not in l and not any(s in low for s in SKIP):
+            return l
+    return "Phone"
+
+
+def get_phones():
+    found = {}
+    for pg in range(1, PAGES + 1):
         try:
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            title_elem = soup.find('span', {'class': 'VU-LmD'}) or soup.find('h1')
-            price_elem = soup.find('div', {'class': 'Nx9bqj C3v44M'}) or soup.find('div', {'class': 'Nx9bqj'})
-
-            earning_link = shorten_with_gplinks(url)
-
-            if title_elem and price_elem:
-                title = title_elem.get_text().strip()
-                price = price_elem.get_text().strip()
-                message = f"🚨 LOOT DEAL ALERT! 🚨\n\n📌 Product: {title}\n💰 Price: {price}\n🔗 Buy Link: {earning_link}"
-            else:
-                message = f"🚨 LOOT DEAL ALERT! 🚨\n\n📌 Product: {backup_name}\n🔗 Check Deal Here: {earning_link}"
-
-            telegram_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            payload = {"chat_id": CHAT_ID, "text": message}
-            requests.post(telegram_url, data=payload)
-            print(f"✅ Sent: {backup_name} (Link Shortened)")
-
-            time.sleep(3)
-
+            r = requests.get(SEARCH.format(pg), headers=HEADERS, timeout=20)
+            print("Page", pg, "status:", r.status_code)
+            soup = BeautifulSoup(r.text, "html.parser")
         except Exception as e:
-            print(f"❌ Error in {backup_name}:", e)
+            print("Page error:", e)
+            continue
+        for a in soup.find_all("a", href=re.compile(r"/p/itm")):
+            link = "https://www.flipkart.com" + a["href"].split("?")[0]
+            if link in found:
+                continue
+            box = a
+            for _ in range(5):
+                box = box.parent
+                if box is None:
+                    break
+                if "₹" in box.get_text():
+                    break
+            if box is None:
+                continue
+            text = box.get_text("\n", strip=True)
+            prices = [p for p in nums(text) if MIN_P <= p <= MAX_P]
+            if not prices:
+                continue
+            off = re.search(r"(\d+)%\s*off", text)
+            found[link] = {
+                "name": get_name(a, text),
+                "price": prices[0],
+                "off": off.group(1) + "%" if off else "-",
+            }
+        time.sleep(3)
+    print("कुल फ़ोन मिले:", len(found))
+    return found
 
-# पहली बार तुरंत रन करने के लिए
-check_and_send_all_deals()
 
-# हर 30 मिनट में ऑटोमैटिक चेक करेगा
-schedule.every(30).minutes.do(check_and_send_all_deals)
+def get_offers(url):
+    try:
+        r = requests.get(url, headers=HEADERS, timeout=20)
+        lines = BeautifulSoup(r.text, "html.parser").get_text("\n", strip=True).split("\n")
+        keys = ("Bank Offer", "Exchange", "No Cost EMI", "Cashback")
+        out = [l for l in lines if any(k in l for k in keys) and len(l) < 160]
+        return list(dict.fromkeys(out))[:4]
+    except Exception:
+        return []
 
-print("\n🚀 Multi-Product Bot chalu ho gaya hai! Har 30 minute me deals bhejega...")
 
-# 24 घंटे लगातार चालू रखने के लिए लूप
+def send(p, url, old=None):
+    offers = get_offers(url)
+    msg = f"📱 <b>{html.escape(p['name'])}</b>\n💰 कीमत: <b>₹{p['price']:,}</b>"
+    if old and old > p["price"]:
+        msg += f"  ⬇️ (पहले ₹{old:,}, ₹{old - p['price']:,} कम)"
+    msg += f"\n🏷 डिस्काउंट: {p['off']}"
+    if offers:
+        msg += "\n\n🎁 <b>ऑफर:</b>\n" + "\n".join("• " + html.escape(o) for o in offers)
+    r = requests.post(
+        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+        json={
+            "chat_id": CHAT_ID,
+            "text": msg,
+            "parse_mode": "HTML",
+            "reply_markup": {
+                "inline_keyboard": [[{"text": "🛒 Flipkart पर खोलें", "url": url}]]
+            },
+        },
+        timeout=15,
+    )
+    print("✅" if r.ok else "❌", p["name"], "" if r.ok else r.text)
+    time.sleep(3)
+    return r.ok
+
+
+def check():
+    print("फ़ोन चेक हो रहे हैं...")
+    db, sent = load_db(), 0
+    for url, p in get_phones().items():
+        old = db.get(url)
+        if (old is None or p["price"] < old) and sent < MAX_PER_RUN:
+            if send(p, url, old):
+                db[url] = p["price"]
+                sent += 1
+    save_db(db)
+    print(f"कुल {sent} मैसेज भेजे")
+
+
+check()
+schedule.every(60).minutes.do(check)
+print("🚀 ट्रैकर चालू है, हर 60 मिनट में चेक करेगा...")
 while True:
     schedule.run_pending()
-    time.sleep(1)
+    time.sleep(30)
